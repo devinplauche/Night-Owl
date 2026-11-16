@@ -99,7 +99,12 @@ jobs:
         run: |
           tag=$(gh release list --exclude-drafts --exclude-pre-releases --json tagName --jq '[.[] | select(.tagName | startswith("v"))][0].tagName' || true)
           if [ -n "$tag" ]; then
-            gh release download "$tag" --pattern nightowl-assets.txt --clobber && echo "NIGHTOWL_VERSION=${tag#v}" >> "$GITHUB_ENV"
+            # The binary list is optional: a release made before a rename (or with no binaries) must not block publishing engines.
+            if gh release download "$tag" --pattern nightowl-assets.txt --clobber; then
+              echo "NIGHTOWL_VERSION=${tag#v}" >> "$GITHUB_ENV"
+            else
+              echo "release $tag has no nightowl-assets.txt; publishing the manifest without a self-update entry"
+            fi
           fi
 
       - name: Generate manifest
