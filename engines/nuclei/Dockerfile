@@ -10,7 +10,7 @@
 # To bump: change NUCLEI_VERSION, the Go and Alpine tags, TEMPLATES_VERSION and
 # TEMPLATES_SHA256 (sha256 of the GitHub release tarball), then update the manifest digest.
 
-FROM mirror.gcr.io/library/golang:1.26.11-alpine@sha256:ae52b5bc6ed045a9ed26ab03dc19327a802a9cc9aa8b27ed57f5c6b60579b0bb AS build
+FROM mirror.gcr.io/library/golang:1.26.11-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS build
 ARG NUCLEI_VERSION=v3.11.1
 # GOTOOLCHAIN=local: compile with this image's patched standard library, never a downloaded one.
 # Module downloads are verified against the Go checksum database (sum.golang.org).

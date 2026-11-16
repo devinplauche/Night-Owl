@@ -6,8 +6,8 @@
 # Bumped automatically by `nightowl engines watch` (VERSION and SOURCE_SHA256).
 FROM mirror.gcr.io/library/python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
-ARG VERSION=1.24.3
-ARG SOURCE_SHA256=1cea733ac0b051d78ae2fdffaaf7757658bfb1b186c948e6e4a03a05874d8507
+ARG VERSION=1.25.0
+ARG SOURCE_SHA256=01880da46007c8942180fd60f6b837abf5015fc27e5c1ed844b01ebe88d70485
 
 COPY requirements.txt /tmp/requirements.txt
 RUN set -eu; \
