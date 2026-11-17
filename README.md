@@ -10,7 +10,7 @@ versions**, normalizes their output into one finding model, removes duplicates a
 and gives you one report, one quality gate and one dashboard. It then keeps itself current
 and keeps watching what you shipped.
 
-Full documentation, with diagrams and a troubleshooting guide, is in [`site/`](site) and is published with GitLab Pages (`.gitlab-ci.yml`). Build it locally with `python3 site/build.py`.
+Full documentation, with diagrams and a troubleshooting guide, is in [`site/`](site) and is published at https://finepointcgi.github.io/Night-Owl/ (GitHub Pages, `.github/workflows/pages.yml`) and, if you mirror the repo to GitLab, with GitLab Pages (`.gitlab-ci.yml`). Build it locally with `python3 site/build.py`.
 
 ## Quick start
 
