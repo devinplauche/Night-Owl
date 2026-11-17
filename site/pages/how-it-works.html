@@ -29,6 +29,29 @@
   <li><strong>Gate and report.</strong> Your policy decides pass or fail, and reports are written in the formats you asked for.</li>
 </ol>
 
+<h2 id="selection">How engines are chosen</h2>
+<p>Night Owl does not ask you to configure anything. It walks the tree once, skipping folders like <code>node_modules</code> and <code>.git</code>, and notes:</p>
+<ul>
+  <li>Dependency manifests and lockfiles, and their ecosystems (npm, PyPI, Go, NuGet, Maven, Cargo, RubyGems, Packagist, Pub).</li>
+  <li>Source languages, from file extensions.</li>
+  <li>Dockerfiles, and infrastructure-as-code files.</li>
+</ul>
+<p>Each engine looks at that profile and decides whether it has anything to do. The progress line <code>» Detected: ecosystems [npm]; languages [python]</code> is that profile. The <a href="engines.html#when">engines page</a> lists the exact condition for each engine. If you want to narrow it, use <code>--engines syft,gitleaks</code>.</p>
+
+<h2 id="order">Why order matters</h2>
+<p>Engines run from lowest <em>order</em> number to highest. Syft goes first because it writes an <strong>SBOM</strong> (a list of every package) into the shared scan context. License checks and the reachability analysis read that list instead of parsing the lockfiles again. The SBOM is also saved, which is what lets <code>nightowl monitor</code> re-check your dependencies later without rescanning.</p>
+
+<h2 id="after">What happens after the engines finish</h2>
+<ol>
+  <li><strong>Merging</strong> collapses identical fingerprints (<a href="findings.html#merging">rules</a>).</li>
+  <li><strong>Reachability</strong> marks dependency vulnerabilities whose package no source file imports.</li>
+  <li><strong>Context labelling</strong> classifies each finding's path as production, test, example, docs, generated or vendored.</li>
+  <li><strong>Ignore rules</strong> (<code>.nightowl/ignore</code>) drop findings in the paths you excluded. The scan says how many it dropped.</li>
+  <li><strong>Triage</strong> decisions are applied by fingerprint (shared decisions win over local ones; expired accepted risks count again).</li>
+  <li><strong>New-code filtering</strong> (<code>--since</code> or <code>--baseline</code>) narrows what the gate looks at.</li>
+  <li>The <strong>gate</strong> is evaluated, reports are written, and the SBOM and a history point are saved.</li>
+</ol>
+
 <h2 id="fingerprints">Fingerprints: IDs that don't change</h2>
 <p>Triage only works if the same problem has the same ID next week. Night Owl builds IDs so they survive rescans, other engines, and code moving around:</p>
 <table>

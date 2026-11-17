@@ -1,0 +1,48 @@
+<h1>Glossary</h1>
+<p class="lead">Plain-language definitions of every term used in these docs. Security has a lot of jargon; none of it is required reading, but this is here when you need it.</p>
+
+<h2 id="security">Security terms</h2>
+<table>
+  <tr><th>Term</th><th>Meaning</th></tr>
+  <tr><td><strong>SAST</strong></td><td>Static Application Security Testing. Reading your source code (without running it) for dangerous patterns.</td></tr>
+  <tr><td><strong>DAST</strong></td><td>Dynamic Application Security Testing. Probing a <em>running</em> application from the outside, as an attacker would.</td></tr>
+  <tr><td><strong>SCA</strong></td><td>Software Composition Analysis. Finding known vulnerabilities and license issues in the third-party libraries you use.</td></tr>
+  <tr><td><strong>SBOM</strong></td><td>Software Bill of Materials. A machine-readable list of every component in your software, like an ingredients label.</td></tr>
+  <tr><td><strong>VEX</strong></td><td>Vulnerability Exploitability eXchange. A statement saying, for each known vulnerability, whether it actually affects your product (for example "false positive" or "fixed").</td></tr>
+  <tr><td><strong>CVE</strong></td><td>Common Vulnerabilities and Exposures. A public id (<code>CVE-2021-23337</code>) for one specific vulnerability.</td></tr>
+  <tr><td><strong>GHSA</strong></td><td>GitHub Security Advisory id. Many CVEs also have one; Night Owl prefers the CVE when both exist.</td></tr>
+  <tr><td><strong>CWE</strong></td><td>Common Weakness Enumeration. A <em>category</em> of mistake (CWE-89 is SQL injection) rather than one specific bug.</td></tr>
+  <tr><td><strong>OSV</strong></td><td>Open Source Vulnerabilities, a free database of advisories across many ecosystems. OSV.dev is where Night Owl looks things up.</td></tr>
+  <tr><td><strong>SARIF</strong></td><td>Static Analysis Results Interchange Format. A standard JSON layout for scanner results that many tools can read.</td></tr>
+  <tr><td><strong>Taint analysis</strong></td><td>Tracking data from where it enters (a <em>source</em>) to where it could do harm (a <em>sink</em>), noting if anything cleans it (a <em>sanitizer</em>) on the way.</td></tr>
+  <tr><td><strong>Injection</strong></td><td>Untrusted input being treated as code: SQL injection, command injection, and so on.</td></tr>
+  <tr><td><strong>XSS</strong></td><td>Cross-site scripting. Untrusted input ending up as active HTML or script in a web page.</td></tr>
+  <tr><td><strong>Path traversal</strong></td><td>Using <code>../</code> in a file name to read or write files outside the intended folder.</td></tr>
+  <tr><td><strong>TLS validation</strong></td><td>Checking that the server you connect to really is who it claims. Disabling it allows man-in-the-middle attacks.</td></tr>
+  <tr><td><strong>Reachability</strong></td><td>Whether your code actually uses a vulnerable package or function. A vulnerability you can't reach is lower priority.</td></tr>
+  <tr><td><strong>Transitive dependency</strong></td><td>A library pulled in by one of your libraries, not by you directly.</td></tr>
+  <tr><td><strong>Lockfile</strong></td><td>A file (<code>package-lock.json</code>, <code>uv.lock</code>, …) that records the exact versions installed. Night Owl scans lockfiles because they show what you really run.</td></tr>
+  <tr><td><strong>Cyclomatic complexity</strong></td><td>A count of the independent paths through a function. High numbers mean code that is hard to test and easy to get wrong.</td></tr>
+</table>
+
+<h2 id="nightowl">Night Owl terms</h2>
+<table>
+  <tr><th>Term</th><th>Meaning</th></tr>
+  <tr><td><strong>Engine</strong></td><td>An open-source scanner Night Owl runs (Syft, OSV-Scanner, gitleaks, Opengrep, cppcheck, Trivy, lizard, ZAP, nuclei).</td></tr>
+  <tr><td><strong>Adapter</strong></td><td>The Night Owl code that runs one engine and translates its output into findings.</td></tr>
+  <tr><td><strong>Finding</strong></td><td>One reported problem, in Night Owl's common format. See <a href="findings.html">Findings and reports</a>.</td></tr>
+  <tr><td><strong>Fingerprint</strong></td><td>A finding's stable id. The same problem keeps the same fingerprint across scans and engines.</td></tr>
+  <tr><td><strong>Gate / quality gate</strong></td><td>The rule that turns findings into pass or fail (exit code 0 or 1).</td></tr>
+  <tr><td><strong>Triage</strong></td><td>Recording a decision about a finding: false positive, accepted risk, confirmed, fixed.</td></tr>
+  <tr><td><strong>Context</strong></td><td>Where a finding lives: production, test, example, docs, generated or vendored. Only production gates by default.</td></tr>
+  <tr><td><strong>Policy</strong></td><td>The committed <code>.nightowl/policy.yml</code> that holds a team's rules.</td></tr>
+  <tr><td><strong>Manifest</strong></td><td>The signed list of exact engine versions and image digests Night Owl may run.</td></tr>
+  <tr><td><strong>Sequence number</strong></td><td>A counter in the manifest that only increases, so an attacker can't make you go back to an older, vulnerable engine.</td></tr>
+  <tr><td><strong>Digest</strong></td><td>The cryptographic hash of a container image. Pinning by digest means a tag can't be quietly re-pointed to different contents.</td></tr>
+  <tr><td><strong>Canary</strong></td><td>A built-in set of known-vulnerable samples. After an update, every engine must still find them; otherwise the update is rolled back.</td></tr>
+  <tr><td><strong>Maturity window</strong></td><td>The waiting period (14 days for engines, 2 for base images) before the watch bot proposes a new upstream release.</td></tr>
+  <tr><td><strong>Watch bot</strong></td><td>The scheduled workflow that opens a pull request when engines or base images have newer releases.</td></tr>
+  <tr><td><strong>Scope file</strong></td><td>The JSON file that says what an active pen test may touch, who approved it, and until when.</td></tr>
+  <tr><td><strong>Scope proxy</strong></td><td>Night Owl's own HTTP proxy that every pen-test request must pass through, so limits are enforced in code.</td></tr>
+  <tr><td><strong>Baseline</strong></td><td>An earlier report to compare against, so only <em>new</em> findings count.</td></tr>
+</table>

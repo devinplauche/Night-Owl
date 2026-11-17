@@ -1,4 +1,4 @@
-<h1>Engines and rules</h1>
+<h1>Engines</h1>
 <p class="lead">Which open-source engine covers what, how Night Owl uses it, and what each one can and cannot see.</p>
 
 <h2 id="table">The engines</h2>
@@ -17,8 +17,39 @@
 <p>Every version is declared once, in <code>engines/engines.json</code>. Engines without an official image (opengrep, cppcheck, lizard, nuclei) get a Dockerfile under <code>engines/</code> that verifies the pinned release by SHA-256 before building.</p>
 <div class="note"><p>Night Owl runs engines as <strong>separate processes or containers</strong> and never links them. That is why a GPL engine such as cppcheck does not affect Night Owl's Apache-2.0 license.</p></div>
 
+<h2 id="versions">Pinned versions right now</h2>
+<p>This table is generated from <code>engines/engines.json</code> when the site is built, so it shows the versions that ship in this checkout.</p>
+{{ENGINE_VERSIONS}}
+
+<h2 id="when">When each engine runs</h2>
+<p>Night Owl first walks your project once and works out its <em>profile</em>: which package managers, languages, containers and infrastructure files are present. Each engine has a cheap "does this apply?" check, so you only pay for what the project needs. Engines run in a fixed order, because some depend on others: the SBOM engine goes first, and the license and vulnerability checks read its output.</p>
+<table>
+  <tr><th>Order</th><th>Engine</th><th>Runs when</th></tr>
+  <tr><td>10</td><td>Syft</td><td>A dependency manifest or a Dockerfile exists.</td></tr>
+  <tr><td>20</td><td>OSV-Scanner</td><td>A dependency manifest or lockfile exists.</td></tr>
+  <tr><td>30</td><td>gitleaks</td><td>Always.</td></tr>
+  <tr><td>40</td><td>Opengrep</td><td>The project has code in a covered language (C#, JS/TS, Python, Java, Go, C/C++, Kotlin, Ruby, PHP, Rust), or you passed <code>--rules</code>.</td></tr>
+  <tr><td>45</td><td>cppcheck</td><td>C or C++ files exist.</td></tr>
+  <tr><td>50</td><td>Trivy (IaC)</td><td>Terraform, a Dockerfile, a Helm chart, a compose file, or Kubernetes/CloudFormation/ARM YAML or JSON exists.</td></tr>
+  <tr><td>55</td><td>Trivy (images)</td><td>A Dockerfile with a scannable base image exists, or you passed <code>--image</code>.</td></tr>
+  <tr><td>60</td><td>lizard</td><td>Any recognised source language is present.</td></tr>
+  <tr><td>61</td><td>Coverage reader</td><td>Always (it reads a coverage file if one exists).</td></tr>
+</table>
+<p>The package managers Night Owl recognises are: npm (<code>package.json</code>, <code>package-lock.json</code>, <code>yarn.lock</code>, <code>pnpm-lock.yaml</code>), PyPI (<code>requirements.txt</code>, <code>poetry.lock</code>, <code>Pipfile.lock</code>, <code>uv.lock</code>), Go (<code>go.mod</code>), Cargo (<code>Cargo.lock</code>), Maven/Gradle (<code>pom.xml</code>, <code>build.gradle[.kts]</code>, <code>gradle.lockfile</code>), NuGet (<code>*.csproj</code>, <code>packages.lock.json</code>), RubyGems (<code>Gemfile.lock</code>), Packagist (<code>composer.lock</code>) and Pub (<code>pubspec.lock</code>). These folders are never walked: <code>.git</code>, <code>node_modules</code>, <code>bin</code>, <code>obj</code>, <code>.venv</code>, <code>venv</code>, <code>__pycache__</code>, <code>target</code>, <code>dist</code>, <code>build</code>, <code>.nightowl</code>.</p>
+
+<h2 id="running">How an engine is run</h2>
+<ul>
+  <li><strong>Container by default.</strong> If the tool isn't on your <code>PATH</code> (or you pass <code>--container</code>), Night Owl runs the pinned image with <code>docker run --rm</code>. The container gets a unique name, so a timeout can remove it; killing only the <code>docker</code> client would leave it running.</li>
+  <li><strong>Your source is mounted read-only.</strong> Engines can read the project but cannot change it. A separate work folder is writable, and is deleted afterward.</li>
+  <li><strong>On Linux,</strong> containers run as your own user, so files written to the work folder have the right owner and can be cleaned up.</li>
+  <li><strong>Secrets by name only.</strong> Values such as auth tokens are passed as <code>-e NAME</code> and read from the environment, so they never appear in <code>ps</code>.</li>
+  <li><strong>Pulls are resilient.</strong> A missing self-built image is built on first use, and an image pull rate-limited by Docker Hub is retried through <code>mirror.gcr.io</code>.</li>
+  <li><strong>Failure is contained.</strong> If an engine fails or times out, you get a warning and a <code>succeeded: false</code> entry in the report. The other engines still finish.</li>
+</ul>
+<div class="note"><p>The default container network is <code>bridge</code>, because engines such as OSV-Scanner need to reach their data sources. Trivy's IaC checks run offline against the checks built into the pinned version.</p></div>
+
 <h2 id="sast">Code rules (SAST)</h2>
-<p>Night Owl ships its own Apache-2.0 rule pack, embedded in the binary (<code>src/NightOwl.Engines/Rules</code>):</p>
+<p>Night Owl ships its own Apache-2.0 rule pack, embedded in the binary (<code>src/NightOwl.Engines/Rules</code>). The full list is in the <a href="rules.html">Rule catalog</a>:</p>
 <ul>
   <li><strong>Pattern rules</strong> find risky constructs: SQL and command injection, <code>eval</code>, insecure deserialization, disabled TLS validation, XSS sinks, weak hashes, and unsafe C string/format/command APIs.</li>
   <li><strong>Taint rules</strong> follow data from where it enters (an HTTP request) to where it is dangerous (a SQL query, a shell, a file path, an HTML response). They cover Flask/Django, Express, ASP.NET Core, servlets, <code>net/http</code>, Spring, Rails and PHP. A sanitizer such as <code>int()</code> or <code>parseInt</code> ends the flow, so a hit is a real data path rather than a guess.</li>

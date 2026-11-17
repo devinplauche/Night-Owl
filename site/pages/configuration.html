@@ -1,0 +1,167 @@
+<h1>Configuration reference</h1>
+<p class="lead">Every file Night Owl reads or writes, every key you can set, and where each one lives. If you only want the common cases, see <a href="policy.html">Policy and gates</a>.</p>
+
+<h2 id="map">Where everything lives</h2>
+<table>
+  <tr><th>Location</th><th>Who writes it</th><th>Commit it?</th><th>Purpose</th></tr>
+  <tr><td><code>.nightowl/policy.yml</code> in your repo</td><td>you</td><td>yes</td><td>Gate thresholds, license rules, quality limits</td></tr>
+  <tr><td><code>.nightowl/ignore</code> in your repo</td><td>you</td><td>yes</td><td>Paths whose findings are dropped</td></tr>
+  <tr><td><code>.nightowl/triage.json</code> in your repo</td><td><code>triage --shared</code></td><td>yes</td><td>Shared triage decisions</td></tr>
+  <tr><td><code>nightowl-scope.json</code> (any path)</td><td>you (<code>pentest init</code>)</td><td>your call</td><td>Authorization and limits for active testing</td></tr>
+  <tr><td><code>~/.nightowl/</code> (or <code>NIGHTOWL_HOME</code>)</td><td>Night Owl</td><td>no</td><td>Reports, SBOMs, local triage, caches, installed manifest</td></tr>
+  <tr><td><code>engines/engines.json</code> (Night Owl source)</td><td>maintainers</td><td>n/a</td><td>Source of truth for engine versions</td></tr>
+</table>
+<p>Night Owl never writes into the repository you scan, apart from files you ask for (<code>policy init</code>, <code>triage --shared</code>, <code>hook install</code>).</p>
+
+<h2 id="policy-ref">policy.yml, every key</h2>
+<table>
+  <tr><th>Key</th><th>Values</th><th>Default</th><th>Notes</th></tr>
+  <tr><td><code>version</code></td><td><code>1</code></td><td>required</td><td>Schema version. Other numbers are rejected.</td></tr>
+  <tr><td><code>gate.fail-on</code></td><td><code>none</code>, <code>info</code>, <code>low</code>, <code>medium</code>, <code>high</code>, <code>critical</code></td><td><code>high</code></td><td>Lowest severity that fails the build. <code>none</code> never fails.</td></tr>
+  <tr><td><code>gate.per-category.&lt;category&gt;</code></td><td>same values</td><td>falls back to <code>fail-on</code></td><td>Categories: <code>secret</code>, <code>code</code>, <code>vulnerability</code>, <code>license</code>, <code>infrastructure</code>, <code>dynamic</code>, <code>quality</code>.</td></tr>
+  <tr><td><code>gate.ignore-unimported</code></td><td><code>true</code>/<code>false</code></td><td><code>false</code></td><td>Don't gate on dependency CVEs when no first-party file imports the package.</td></tr>
+  <tr><td><code>gate.include-contexts</code></td><td>list of <code>test</code>, <code>example</code>, <code>docs</code>, <code>generated</code>, <code>vendored</code> (or <code>all</code>)</td><td>empty (production only)</td><td>Contexts that are allowed to fail the gate.</td></tr>
+  <tr><td><code>licenses.deny</code></td><td>list of SPDX ids</td><td>AGPL-1.0, AGPL-3.0 (+ <code>-only</code>/<code>-or-later</code>), SSPL-1.0, BUSL-1.1, CC-BY-NC-4.0</td><td>A match is a <strong>high</strong> finding. Replaces the default list.</td></tr>
+  <tr><td><code>licenses.review</code></td><td>list of SPDX ids</td><td>GPL-2.0 and 3.0, LGPL-2.1 and 3.0 (all <code>-only</code>/<code>-or-later</code> forms), MPL-2.0, EPL-2.0, CDDL-1.0</td><td>A match is a <strong>medium</strong> finding. Replaces the default list.</td></tr>
+  <tr><td><code>licenses.allow</code></td><td>list of SPDX ids</td><td>none</td><td>When set, anything <em>not</em> listed is flagged for review.</td></tr>
+  <tr><td><code>licenses.flag-unknown</code></td><td><code>true</code>/<code>false</code></td><td><code>true</code></td><td>Report packages with no detectable license (low severity). Checked for npm, PyPI, crates.io, RubyGems, Packagist, Maven and Pub.</td></tr>
+  <tr><td><code>quality.min-coverage</code></td><td>percent</td><td>none</td><td>Needs a coverage report in the project.</td></tr>
+  <tr><td><code>quality.max-duplication</code></td><td>percent</td><td>none</td><td>Duplicated-code limit.</td></tr>
+  <tr><td><code>quality.max-complexity</code></td><td>number</td><td><code>15</code></td><td>Cyclomatic complexity per function.</td></tr>
+</table>
+<div class="note"><p><strong>Strict by design.</strong> An unknown key, a bad value or a wrong type is an error that stops the run, never silently ignored. Run <code>nightowl policy validate</code> after every edit; it prints exactly what will apply.</p></div>
+
+<h3>Precedence</h3>
+<ol>
+  <li><strong>Command-line flags</strong> win. An explicit <code>--fail-on</code> replaces the whole gate, including per-category rules, because a flag is a deliberate one-off.</li>
+  <li><strong>policy.yml</strong> comes next.</li>
+  <li><strong>Built-in defaults</strong> apply last: fail on high, production code only, complexity 15.</li>
+</ol>
+
+<h3>A complete, realistic policy</h3>
+<pre><code>version: 1
+
+gate:
+  fail-on: high
+  per-category:
+    secret: low             # a secret of any severity blocks
+    infrastructure: medium  # misconfigured Terraform blocks earlier
+    quality: none           # complexity and duplication never block
+  ignore-unimported: true   # skip CVEs in packages no code imports
+  include-contexts: [test]  # a real key in a test folder still blocks
+
+licenses:
+  deny:   [AGPL-3.0-only, AGPL-3.0-or-later, SSPL-1.0]
+  review: [GPL-3.0-only, LGPL-3.0-only, MPL-2.0]
+  flag-unknown: true
+
+quality:
+  min-coverage: 70
+  max-duplication: 5
+  max-complexity: 15</code></pre>
+
+<h2 id="ignore-ref">.nightowl/ignore</h2>
+<p>One pattern per line, gitignore style. Findings in matching paths are dropped from the report, unlike a context label (which keeps the finding listed).</p>
+<table>
+  <tr><th>Pattern</th><th>Matches</th></tr>
+  <tr><td><code># comment</code></td><td>Nothing (comment). Blank lines are skipped.</td></tr>
+  <tr><td><code>*.min.js</code></td><td>Any file with that name, in any folder (no slash means "match the name anywhere").</td></tr>
+  <tr><td><code>legacy/</code></td><td>The <code>legacy</code> folder and everything under it, wherever it appears at the start of a path.</td></tr>
+  <tr><td><code>src/gen/*.cs</code></td><td>Files directly inside <code>src/gen</code> (a slash anchors the pattern to the project root). <code>*</code> never crosses a folder.</td></tr>
+  <tr><td><code>docs/**/draft.md</code></td><td><code>draft.md</code> at any depth under <code>docs</code>, including directly in it. <code>**</code> crosses folders.</td></tr>
+  <tr><td><code>file?.js</code></td><td><code>?</code> matches one character.</td></tr>
+</table>
+<div class="warn"><p><strong>Ignore hides, context labels don't.</strong> Use <code>ignore</code> for code you will never fix (deliberately vulnerable samples). For tests and examples, prefer the automatic context labels: those findings stay visible and can still be gated on request.</p></div>
+
+<h2 id="triage-ref">.nightowl/triage.json</h2>
+<p>A JSON array, sorted by finding id so diffs stay small. Hand-editing is fine, but <code>nightowl triage</code> is easier.</p>
+<table>
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td><code>findingId</code></td><td>The finding's fingerprint.</td></tr>
+  <tr><td><code>state</code></td><td><code>confirmed</code>, <code>false-positive</code>, <code>accepted-risk</code>, <code>fixed</code>.</td></tr>
+  <tr><td><code>reason</code></td><td>Why. Always fill this in; it is what the reviewer reads.</td></tr>
+  <tr><td><code>by</code>, <code>at</code></td><td>Who decided and when.</td></tr>
+  <tr><td><code>expires</code></td><td>Optional. After this moment an accepted risk counts again and needs a fresh decision.</td></tr>
+  <tr><td><code>title</code></td><td>The finding's title at decision time, so the file is readable in a code review.</td></tr>
+</table>
+<p>There are two layers: <strong>shared</strong> (<code>.nightowl/triage.json</code> in the repo) and <strong>local</strong> (<code>~/.nightowl/triage/&lt;project&gt;.json</code>). If both decide the same finding, <strong>shared wins</strong>.</p>
+
+<h2 id="scope-ref">Pen-test scope file</h2>
+<p>Created by <code>nightowl pentest init</code>. It is JSON (comments and trailing commas allowed). <strong>Unknown fields are rejected</strong>, so a typo can't weaken a limit.</p>
+<table>
+  <tr><th>Field</th><th>Default</th><th>Meaning</th></tr>
+  <tr><td><code>authorization.owner</code></td><td>required</td><td>Person or team that owns the target and approved the test.</td></tr>
+  <tr><td><code>authorization.reference</code></td><td>required</td><td>Ticket, contract or rules-of-engagement id. Recorded in every report.</td></tr>
+  <tr><td><code>authorization.expires</code></td><td>required</td><td>ISO date-time. After it, the scope stops working. The template sets 7 days.</td></tr>
+  <tr><td><code>targets</code></td><td>required</td><td>Base URLs allowed (<code>https://staging.example.com</code>). Scheme, host and port must match exactly. No wildcards.</td></tr>
+  <tr><td><code>include</code></td><td><code>["/"]</code></td><td>Path prefixes that may be requested.</td></tr>
+  <tr><td><code>exclude</code></td><td><code>[]</code></td><td>Path prefixes that must never be requested. Wins over <code>include</code>. Prefix match: <code>/logout</code> also blocks <code>/logout.php</code>.</td></tr>
+  <tr><td><code>methods</code></td><td><code>GET, HEAD, OPTIONS</code></td><td>Add <code>POST</code> etc. only deliberately.</td></tr>
+  <tr><td><code>maxRequestsPerSecond</code></td><td><code>10</code></td><td>Enforced by the proxy.</td></tr>
+  <tr><td><code>timeBudgetMinutes</code></td><td><code>30</code></td><td>Whole-run time limit.</td></tr>
+  <tr><td><code>auth.header</code>, <code>auth.valueFromEnv</code></td><td>none</td><td>Header name and the <em>name of the environment variable</em> holding its value. The value itself is never in the file.</td></tr>
+  <tr><td><code>allowActiveScan</code></td><td><code>false</code></td><td>Lets ZAP send attack payloads to API operations.</td></tr>
+</table>
+<pre><code>{
+  "authorization": {
+    "owner": "Platform security team",
+    "reference": "SEC-1234",
+    "expires": "2026-12-01T00:00:00Z"
+  },
+  "targets": ["https://staging.example.com"],
+  "exclude": ["/logout", "/account/delete"],
+  "maxRequestsPerSecond": 5,
+  "auth": { "header": "Authorization", "valueFromEnv": "NIGHTOWL_AUTH" }
+}</code></pre>
+
+<h2 id="env-ref">Environment variables</h2>
+<table>
+  <tr><th>Variable</th><th>Used by</th><th>Meaning</th></tr>
+  <tr><td><code>NIGHTOWL_HOME</code></td><td>everything</td><td>Data directory. Default <code>~/.nightowl</code>.</td></tr>
+  <tr><td><code>NIGHTOWL_AUTO_UPDATE</code></td><td>scan</td><td><code>0</code> turns off the daily engine-update check.</td></tr>
+  <tr><td><code>NIGHTOWL_WEBHOOK</code></td><td>monitor, dashboard</td><td>Default webhook URL for new-advisory alerts.</td></tr>
+  <tr><td><code>NIGHTOWL_DASHBOARD_TOKEN</code></td><td>dashboard</td><td>Required if the dashboard listens on a non-local address.</td></tr>
+  <tr><td><code>NIGHTOWL_REPO</code></td><td>install.sh</td><td><code>owner/repo</code> to install from. Default <code>finepointcgi/Night-Owl</code>.</td></tr>
+  <tr><td><code>NIGHTOWL_VERSION</code></td><td>install.sh</td><td>Version to install.</td></tr>
+  <tr><td><code>NIGHTOWL_INSTALL_DIR</code></td><td>install.sh</td><td>Install location. Default <code>~/.local/bin</code>.</td></tr>
+  <tr><td><code>ANTHROPIC_API_KEY</code></td><td>scan --ai claude</td><td>API key for the Claude client.</td></tr>
+  <tr><td><code>OLLAMA_HOST</code></td><td>scan --ai ollama</td><td>Address of the Ollama server.</td></tr>
+  <tr><td>name set in <code>auth.valueFromEnv</code></td><td>pentest</td><td>Full value of the auth header.</td></tr>
+</table>
+
+<h2 id="home">Inside ~/.nightowl</h2>
+<table>
+  <tr><th>Path</th><th>Contents</th></tr>
+  <tr><td><code>manifest.json</code></td><td>The installed, signature-verified engine manifest (the "lockfile" for all scans).</td></tr>
+  <tr><td><code>manifest.previous.json</code></td><td>The manifest before the last update, kept for rollback.</td></tr>
+  <tr><td><code>rejected-sequences</code></td><td>Sequence numbers that failed the canary. Never installed again.</td></tr>
+  <tr><td><code>last-update-check</code></td><td>When Night Owl last asked for a new manifest.</td></tr>
+  <tr><td><code>reports/</code></td><td>Saved scan reports, SBOMs, and <code>history/*.jsonl</code> (the trend data).</td></tr>
+  <tr><td><code>triage/</code></td><td>Local triage decisions, one file per project.</td></tr>
+  <tr><td><code>cache/</code></td><td>Engine caches, such as Trivy's vulnerability database.</td></tr>
+  <tr><td><code>pentests/</code></td><td>Request logs from active tests (<code>*.requests.jsonl</code>).</td></tr>
+</table>
+<p>It is safe to delete <code>cache/</code>; engines refill it. Deleting <code>manifest.json</code> returns Night Owl to its built-in engine versions until the next <code>nightowl update</code>.</p>
+
+<h2 id="engines-json">engines/engines.json (for maintainers)</h2>
+<p>The single source of truth for engine versions. The release pipeline turns it into the signed manifest.</p>
+<table>
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td><code>name</code>, <code>binary</code></td><td>Engine name, and the executable looked for on <code>PATH</code>.</td></tr>
+  <tr><td><code>image</code></td><td>Container image without a tag.</td></tr>
+  <tr><td><code>build</code></td><td>Folder with a Dockerfile, for engines Night Owl builds itself; <code>null</code> for engines with an official image.</td></tr>
+  <tr><td><code>upstream[]</code></td><td>Where new versions come from: <code>repo</code>, current <code>tag</code>, a <code>version</code> template, and the <code>dockerfile</code> whose pins the watch bot rewrites.</td></tr>
+  <tr><td><code>version</code></td><td>The version that ships.</td></tr>
+</table>
+<p>Version templates: <code>{tag}</code> is the upstream tag, <code>{bare}</code> is the tag without a leading <code>v</code>, <code>asset-sha256:NAME</code> is the hash of a release asset, <code>tarball-sha256</code> the hash of the tag's source tarball, and <code>FROM</code> means "rewrite the Dockerfile's FROM line".</p>
+
+<h3>The signed manifest</h3>
+<table>
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td><code>schemaVersion</code></td><td>Currently <code>1</code>. Unknown versions are refused.</td></tr>
+  <tr><td><code>channel</code></td><td>For example <code>stable</code>.</td></tr>
+  <tr><td><code>sequence</code></td><td>A number that only goes up. Lower numbers than installed are refused (rollback protection).</td></tr>
+  <tr><td><code>published</code></td><td>When it was signed.</td></tr>
+  <tr><td><code>engines[]</code></td><td>Per engine: <code>name</code>, <code>version</code>, <code>image</code>, and an immutable image <code>digest</code> (<code>sha256:…</code>) that signed manifests must have.</td></tr>
+  <tr><td><code>nightOwl</code></td><td>Latest release: <code>version</code> and, per platform, a <code>url</code> and <code>sha256</code> (platform names such as <code>linux-x64</code>, <code>osx-arm64</code>, <code>win-x64</code>).</td></tr>
+</table>

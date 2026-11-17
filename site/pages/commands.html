@@ -27,9 +27,38 @@
   <tr><td><code>--ai claude|claude-code|ollama</code> <code>--ai-model m</code> <code>--ai-min-severity s</code> <code>--ai-max n</code></td><td>AI exploitability review. <a href="ai-pentest.html">Details</a></td></tr>
 </table>
 
+<h3>Scan recipes</h3>
+<pre><code># Everything, human-readable
+nightowl scan .
+
+# Only the pull request's changes; fail on new high-severity problems
+nightowl scan . --since origin/main --fail-on high
+
+# Adopting on a legacy repo: only fail on problems that are new since last time
+nightowl scan . --baseline last
+
+# One scan, three outputs for CI
+nightowl scan . --sarif-output nightowl.sarif --summary-output nightowl.md --codeclimate-output gl-code-quality.json
+
+# Secrets only, fast (just the PR's commits)
+nightowl scan . --engines gitleaks --history origin/main..HEAD
+
+# Treat tests like production, and add your own rules
+nightowl scan . --include-context all --rules ./my-rules
+
+# Also scan a container image you build
+nightowl scan . --image myorg/api:latest
+
+# Quality gates
+nightowl scan . --min-coverage 80 --max-duplication 5 --max-complexity 12</code></pre>
+
 <h2 id="triage">nightowl triage</h2>
 <pre><code>nightowl triage &lt;id&gt; false-positive|accepted-risk|confirmed|fixed|reset --reason "..." [--expires date] [--shared]</code></pre>
 <p>Records a decision about a finding. <code>--expires</code> makes an accepted risk come back for review on that date. <code>--shared</code> writes to <code>.nightowl/triage.json</code> in the repository so everyone sees it.</p>
+
+<h3>Triage example</h3>
+<pre><code>nightowl triage 0c6c902c7984c73f75bfb30259c967a0 accepted-risk \
+    --reason "Internal-only admin tool, behind VPN" --expires 2027-03-01 --shared</code></pre>
 
 <h2 id="policy-cmd">nightowl policy</h2>
 <pre><code>nightowl policy init        # write a commented starter .nightowl/policy.yml
@@ -76,4 +105,11 @@ nightowl engines watch [--only base] [--write]   # find newer upstream engine/ba
 </table>
 
 <h2 id="exit-codes">Exit codes</h2>
-<p><code>0</code> passed &middot; <code>1</code> a gate failed &middot; <code>2</code> error.</p>
+<p>These matter in CI, where a non-zero code stops the job.</p>
+<table>
+  <tr><th>Code</th><th>Meaning</th><th>Typical CI response</th></tr>
+  <tr><td><code>0</code></td><td>Passed</td><td>Continue.</td></tr>
+  <tr><td><code>1</code></td><td>A gate failed</td><td>Fail the job; show the findings to the developer.</td></tr>
+  <tr><td><code>2</code></td><td>Error in Night Owl itself</td><td>Fail the job, but treat it as an infrastructure problem, not a security result.</td></tr>
+</table>
+

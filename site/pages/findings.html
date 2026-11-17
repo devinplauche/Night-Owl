@@ -1,0 +1,117 @@
+<h1>Findings and reports</h1>
+<p class="lead">Every engine speaks its own language. Night Owl translates all of them into one <em>finding</em>, and this page describes that shape field by field, so you can read reports, write scripts against them, and understand merging.</p>
+
+<h2 id="model">The finding model</h2>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Meaning</th></tr>
+  <tr><td><code>id</code></td><td>string (32 hex)</td><td>Stable <a href="#fingerprints">fingerprint</a>. This is what triage decisions attach to.</td></tr>
+  <tr><td><code>category</code></td><td>enum</td><td><code>Vulnerability</code>, <code>License</code>, <code>Secret</code>, <code>Code</code>, <code>Infrastructure</code>, <code>Dynamic</code>, <code>Quality</code>.</td></tr>
+  <tr><td><code>severity</code></td><td>enum</td><td><code>Critical</code> &gt; <code>High</code> &gt; <code>Medium</code> &gt; <code>Low</code> &gt; <code>Info</code> &gt; <code>Unknown</code>. Ordered, so "high or above" is a simple comparison.</td></tr>
+  <tr><td><code>ruleId</code></td><td>string</td><td>The engine's rule or advisory id: <code>GHSA-…</code>, <code>CVE-…</code>, <code>nightowl.python.eval</code>, <code>secret/aws-access-token</code>.</td></tr>
+  <tr><td><code>title</code>, <code>description</code></td><td>string</td><td>Human-readable summary and details.</td></tr>
+  <tr><td><code>engines</code></td><td>string[]</td><td>Every engine that reported it. More than one means it was merged.</td></tr>
+  <tr><td><code>location</code></td><td>object</td><td><code>path</code>, <code>startLine</code>, <code>endLine</code>, <code>snippet</code>. All optional (a dependency finding points at its lockfile).</td></tr>
+  <tr><td><code>package</code></td><td>object</td><td>For dependency findings: <code>name</code>, <code>version</code>, <code>ecosystem</code>, optional <code>purl</code>.</td></tr>
+  <tr><td><code>aliases</code></td><td>string[]</td><td>Other ids for the same issue. Vulnerabilities list the CVE here; code findings list the CWE.</td></tr>
+  <tr><td><code>fixedVersions</code></td><td>string[]</td><td>Package versions that fix it, when known.</td></tr>
+  <tr><td><code>references</code></td><td>string[]</td><td>Advisory and commit links.</td></tr>
+  <tr><td><code>triage</code></td><td>enum</td><td><code>New</code>, <code>Confirmed</code>, <code>FalsePositive</code>, <code>AcceptedRisk</code>, <code>Fixed</code>.</td></tr>
+  <tr><td><code>context</code></td><td>enum</td><td><code>Production</code>, <code>Test</code>, <code>Example</code>, <code>Docs</code>, <code>Generated</code>, <code>Vendored</code>. <a href="policy.html#contexts">How it's decided</a>.</td></tr>
+  <tr><td><code>reachability</code></td><td>enum</td><td><code>Unknown</code>, <code>Imported</code>, <code>NotImported</code>. Dependency vulnerabilities only.</td></tr>
+  <tr><td><code>assessment</code></td><td>object</td><td>Present only with <code>--ai</code>: <code>verdict</code>, <code>confidence</code>, <code>reasoning</code>, attack path, verification steps, fix, model. Advisory.</td></tr>
+</table>
+
+<h3>Example: a code finding</h3>
+<pre><code>{
+  "id": "0c6c902c7984c73f75bfb30259c967a0",
+  "category": "Code",
+  "severity": "High",
+  "ruleId": "nightowl.taint.python.injection",
+  "title": "User input reaches a command, SQL query or eval without sanitization. …",
+  "engines": ["opengrep"],
+  "location": {
+    "path": "src/app.py",
+    "startLine": 9,
+    "snippet": "return subprocess.check_output(\"ping -c 1 \" + host, shell=True)"
+  },
+  "aliases": ["CWE-74"],
+  "fixedVersions": [],
+  "references": [],
+  "triage": "New",
+  "context": "Production",
+  "reachability": "Unknown"
+}</code></pre>
+
+<h3>Example: a dependency finding</h3>
+<pre><code>{
+  "id": "52f5b51a7804b451c664e0b542de1092",
+  "category": "Vulnerability",
+  "severity": "High",
+  "ruleId": "GHSA-35jh-r3h4-6jhm",
+  "title": "Command Injection in lodash in lodash@4.17.15",
+  "engines": ["osv-scanner"],
+  "package": { "name": "lodash", "version": "4.17.15", "ecosystem": "npm" },
+  "aliases": ["CVE-2021-23337"],
+  "fixedVersions": ["4.17.21"],
+  "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-23337", "…"],
+  "triage": "New",
+  "context": "Production",
+  "reachability": "NotImported"
+}</code></pre>
+
+<h2 id="report">The scan report (JSON)</h2>
+<p><code>--format json</code> writes a <code>ScanReport</code>. The dashboard reads the same file.</p>
+<table>
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td><code>project</code></td><td>Absolute path that was scanned.</td></tr>
+  <tr><td><code>startedAt</code>, <code>seconds</code></td><td>When the scan began and how long it took.</td></tr>
+  <tr><td><code>manifestSequence</code></td><td>The engine manifest in use (<code>0</code> if running unpinned). Lets you reproduce a scan.</td></tr>
+  <tr><td><code>engines[]</code></td><td>One entry per engine that ran: <code>engine</code>, <code>version</code>, <code>succeeded</code>, <code>seconds</code>, <code>error</code>. A failed engine shows <code>succeeded: false</code> and its error, but the scan still completes.</td></tr>
+  <tr><td><code>findings[]</code></td><td>The merged, sorted finding list (worst severity first, then by title).</td></tr>
+  <tr><td><code>metrics</code></td><td>Project-wide numbers: <code>complexity.functions</code>, <code>complexity.average</code>, <code>complexity.max</code>, <code>complexity.over-threshold</code>, <code>duplication.rate</code>, and <code>coverage.lines</code> when a coverage report exists.</td></tr>
+  <tr><td><code>pentest</code></td><td>Only for <code>nightowl pentest</code>: who authorized it, the scope hash, the plan, requests sent and blocked.</td></tr>
+</table>
+<p>Because <code>engines[]</code> records failures, a script can distinguish "no findings" from "the scanner did not run". Check <code>succeeded</code> before treating an empty list as clean.</p>
+
+<h2 id="sarif">SARIF</h2>
+<p>SARIF is the standard exchange format for static analysis, understood by GitHub code scanning and many IDEs. Night Owl maps findings like this:</p>
+<table>
+  <tr><th>Night Owl</th><th>SARIF</th></tr>
+  <tr><td><code>ruleId</code></td><td><code>ruleId</code></td></tr>
+  <tr><td>severity Critical or High</td><td><code>level: error</code></td></tr>
+  <tr><td>severity Medium</td><td><code>level: warning</code></td></tr>
+  <tr><td>severity Low, Info, Unknown</td><td><code>level: note</code></td></tr>
+  <tr><td><code>id</code></td><td><code>partialFingerprints["nightowl/v1"]</code>, so code scanning tracks the same alert across runs</td></tr>
+  <tr><td>category</td><td>rule <code>tags</code></td></tr>
+  <tr><td>AI assessment</td><td>result <code>properties</code>: <code>aiExploitability</code>, <code>aiConfidence</code>, <code>aiReasoning</code>, <code>aiModel</code></td></tr>
+</table>
+
+<h2 id="fingerprints">Fingerprints in depth</h2>
+<p>An id is the first 32 hex characters of a SHA-256 over a few stable facts. What goes into the hash depends on the category:</p>
+<table>
+  <tr><th>Category</th><th>Hashed together</th><th>Deliberately <em>not</em> included</th></tr>
+  <tr><td>Vulnerability</td><td>ecosystem, package name (lower-case), version, canonical advisory id</td><td>The file path, so moving a lockfile doesn't reset triage</td></tr>
+  <tr><td>License</td><td>ecosystem, package, version, license id (upper-case)</td><td>File path</td></tr>
+  <tr><td>Code, secret, IaC</td><td>rule id, normalized path, <em>normalized snippet</em></td><td>The line number. If there's no snippet, the line is used as a fallback.</td></tr>
+  <tr><td>Dynamic (DAST)</td><td>rule, HTTP method, scheme+host+port+path, sorted query <em>names</em>, affected parameter</td><td>Query <em>values</em>, so a re-test with new session ids gives the same id</td></tr>
+</table>
+<p><strong>Normalized snippet</strong> means every run of whitespace collapses to one space, so re-indenting a line does not change the id. Changing the code itself does, which is correct: it is a different piece of code.</p>
+<p><strong>Canonical advisory id:</strong> when an engine reports several ids for one problem, Night Owl prefers a CVE id, then a GHSA id, then whatever it was given. Two engines that name the same bug differently therefore end up with the same fingerprint.</p>
+
+<h2 id="merging">How duplicates merge</h2>
+<p>Findings with the same <code>id</code> become one. The merge rules:</p>
+<ul>
+  <li><strong>Severity:</strong> the <em>highest</em> any engine gave. Engines disagree, and understating a problem is worse than overstating it.</li>
+  <li><strong>Description, location, AI assessment:</strong> the first non-empty value.</li>
+  <li><strong>Engines, aliases, fixed versions, references:</strong> the union (case-insensitive, no repeats).</li>
+  <li>The final list is sorted by severity (highest first), then by title.</li>
+</ul>
+<p>Note that merging is by <em>fingerprint</em>. Two different rules that fire on the same line have different fingerprints, so they stay as two findings. That's why the example in <a href="tutorial.html">Worked example</a> shows two findings on <code>src/app.py:9</code>.</p>
+
+<h2 id="gate-logic">How the gate counts findings</h2>
+<ol>
+  <li>Only findings whose triage state is <code>New</code> or <code>Confirmed</code> can block. A <code>FalsePositive</code>, <code>AcceptedRisk</code> or <code>Fixed</code> finding never does. An accepted risk whose <code>--expires</code> date has passed counts again.</li>
+  <li>The threshold for a finding is the per-category value if the policy sets one, otherwise <code>fail-on</code>. A per-category value of <code>none</code> means that category never blocks.</li>
+  <li>The finding must be at or above that severity.</li>
+  <li>If the finding's context isn't <code>Production</code> (and isn't listed in <code>include-contexts</code>), it moves to the "Not gating" list instead of blocking.</li>
+</ol>

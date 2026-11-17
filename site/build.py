@@ -14,15 +14,20 @@ OUT = ROOT.parent / "public"
 PAGES = [
     ("index", "Overview", "What Night Owl is and what it replaces"),
     ("getting-started", "Getting started", "Install, run your first scan, read the results"),
+    ("tutorial", "Worked example", "A real scan, line by line, from findings to a passing build"),
     ("how-it-works", "How it works", "Engines, findings, fingerprints and the scan pipeline"),
+    ("findings", "Findings and reports", "The finding model, JSON and SARIF formats, merging"),
     ("commands", "Command reference", "Every command and option"),
+    ("configuration", "Configuration reference", "Every file, key and environment variable"),
     ("policy", "Policy and gates", "Decide what fails a build; triage; noise control"),
-    ("engines", "Engines and rules", "What scans what, in which languages"),
+    ("engines", "Engines", "What scans what, in which languages"),
+    ("rules", "Rule catalog", "Every built-in code rule, generated from the rule files"),
     ("staying-current", "Staying current", "Signed updates, the watch bot, canary and rollback"),
     ("ci", "CI and editors", "GitHub, GitLab, pre-commit hook, VS Code"),
     ("sbom", "SBOM, monitoring and fixes", "SBOM, VEX, reachability, history, auto-fix"),
     ("ai-pentest", "AI review and pen testing", "Exploitability review and authorized active testing"),
     ("troubleshooting", "FAQ and troubleshooting", "Common problems, limits and the roadmap"),
+    ("glossary", "Glossary", "Plain-language definitions of every term"),
 ]
 
 LAYOUT = """<!doctype html>
@@ -58,6 +63,40 @@ LAYOUT = """<!doctype html>
 """
 
 
+REPO = ROOT.parent
+
+
+def rules_tables():
+    """Builds the rule catalog from the rule files, so the page can never drift from the code."""
+    out = []
+    for f in sorted((REPO / "src/NightOwl.Engines/Rules").glob("*.yaml")):
+        rows = []
+        for blk in re.split(r"\n  - id: ", f.read_text(encoding="utf-8"))[1:]:
+            rid = blk.split("\n")[0].strip()
+            sev = re.search(r"severity: (\w+)", blk)
+            lang = re.search(r"languages: \[(.*?)\]", blk)
+            msg = re.search(r"message: (.+)", blk)
+            cwe = re.search(r"(CWE-\d+)", blk)
+            kind = "taint" if "mode: taint" in blk else "pattern"
+            text = (msg.group(1) if msg else "").strip().strip("\"'")
+            sev_name = {"ERROR": "high", "WARNING": "medium"}.get(sev.group(1) if sev else "", "low")
+            rows.append(
+                f"<tr><td><code>{html.escape(rid)}</code></td><td>{kind}</td><td>{html.escape(lang.group(1) if lang else '')}</td>"
+                f"<td>{sev_name}</td><td>{html.escape(cwe.group(1) if cwe else '')}</td><td>{html.escape(text)}</td></tr>")
+        out.append(f"<h3 id=\"file-{f.stem}\"><code>{f.name}</code> <span class=\"pill\">{len(rows)} rules</span></h3>"
+                   "<table><tr><th>Rule id</th><th>Kind</th><th>Languages</th><th>Severity</th><th>CWE</th><th>What it flags and how to fix it</th></tr>"
+                   + "".join(rows) + "</table>")
+    return "\n".join(out)
+
+
+def engine_versions():
+    import json
+    data = json.loads((REPO / "engines/engines.json").read_text(encoding="utf-8"))
+    rows = "".join(f"<tr><td>{html.escape(e['name'])}</td><td><code>{html.escape(e['version'])}</code></td><td><code>{html.escape(e['image'])}</code></td></tr>"
+                   for e in data["engines"])
+    return "<table><tr><th>Engine</th><th>Pinned version</th><th>Container image</th></tr>" + rows + "</table>"
+
+
 def nav_html(current):
     items = []
     for slug, title, _ in PAGES:
@@ -75,6 +114,7 @@ def build():
     for i, (slug, title, summary) in enumerate(PAGES):
         src = ROOT / "pages" / f"{slug}.html"
         body = src.read_text(encoding="utf-8")
+        body = body.replace("{{RULES}}", rules_tables()).replace("{{ENGINE_VERSIONS}}", engine_versions())
         prev = nxt = ""
         if i > 0:
             p = PAGES[i - 1]
