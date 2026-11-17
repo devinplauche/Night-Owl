@@ -1,0 +1,42 @@
+<h1>Rule catalog</h1>
+<p class="lead">Every code rule Night Owl ships. This page is generated from the rule files at build time, so it always matches what the scanner actually runs.</p>
+
+<h2 id="how">Reading the tables</h2>
+<table>
+  <tr><th>Column</th><th>Meaning</th></tr>
+  <tr><td>Rule id</td><td>What you see in the report and what you put in a triage decision or ignore note. All start with <code>nightowl.</code></td></tr>
+  <tr><td>Kind</td><td><strong>pattern</strong>: matches a risky code shape on its own (fast, can't tell where data came from). <strong>taint</strong>: follows data from a <em>source</em> (a request parameter) to a <em>sink</em> (a SQL call), so a hit means untrusted data really reaches something dangerous.</td></tr>
+  <tr><td>Severity</td><td>The severity reported. Rules marked ERROR in the rule file are reported <strong>high</strong>, WARNING as <strong>medium</strong>.</td></tr>
+  <tr><td>CWE</td><td>The Common Weakness Enumeration class, listed as an alias on the finding, for compliance reports.</td></tr>
+</table>
+
+<h2 id="pattern-vs-taint">Pattern rules versus taint rules</h2>
+<p>Take this code:</p>
+<pre><code>def run(cmd):                # not reachable from a request
+    subprocess.call(cmd, shell=True)
+
+@app.route("/x")
+def x():
+    subprocess.call(request.args["c"], shell=True)</code></pre>
+<p>A <strong>pattern</strong> rule flags both lines: both call a shell with a dynamic string. A <strong>taint</strong> rule flags only the second, because only there does request data arrive. Use pattern rules to find risky habits, and taint hits to decide what to fix first.</p>
+<p>Taint rules understand <strong>sanitizers</strong>: wrapping the value in <code>int()</code> in Python, or <code>parseInt</code> in JavaScript, ends the flow, so no finding is raised.</p>
+
+<h2 id="catalog">All rules</h2>
+{{RULES}}
+
+<h2 id="custom">Writing your own rules</h2>
+<p>Night Owl uses Opengrep, which reads Semgrep-syntax rules. Put <code>.yaml</code> files in a folder and pass it with <code>--rules</code>:</p>
+<pre><code>nightowl scan . --rules ./my-rules</code></pre>
+<p>A minimal rule, forbidding a project-specific unsafe helper:</p>
+<pre><code>rules:
+  - id: acme.no-unsafe-exec
+    languages: [python]
+    severity: ERROR
+    message: acme.unsafe_exec() runs unvalidated commands. Use acme.safe_exec().
+    pattern: acme.unsafe_exec(...)
+    metadata:
+      cwe: ["CWE-78"]</code></pre>
+<p>Custom rules run alongside the built-in pack, and their findings get the same fingerprints, triage, context labels and gate treatment as everything else. Rules passed with <code>--rules</code> make the Opengrep engine run even if the project's languages aren't in the built-in set.</p>
+
+<h2 id="license">Why Night Owl writes its own rules</h2>
+<p>The public Semgrep rule registry is licensed in a way that forbids bundling it in a competing product. Night Owl therefore ships its own rules, licensed Apache-2.0 and embedded in the binary. The pack is smaller than the registry on purpose: each rule is meant to have a high hit-rate, and the canary corpus contains samples for the main rule families so an engine update can't silently stop detecting them.</p>

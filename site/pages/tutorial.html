@@ -1,0 +1,128 @@
+<h1>Worked example</h1>
+<p class="lead">One small project, scanned for real. Every output on this page was captured from an actual run, so you can see exactly what Night Owl prints and what to do about each line.</p>
+
+<h2 id="project">The project we scan</h2>
+<p>A tiny Flask app with a lockfile and one test file. It is deliberately bad:</p>
+<pre><code>demo/
+├── src/app.py             # a Flask app with two problems
+├── tests/test_config.py   # contains a fake-looking AWS key
+├── package.json           # depends on lodash 4.17.15 (old)
+└── package-lock.json</code></pre>
+<p><code>src/app.py</code>:</p>
+<pre><code>import os, subprocess
+from flask import Flask, request
+
+app = Flask(__name__)
+
+@app.route("/ping")
+def ping():
+    host = request.args.get("host")
+    return subprocess.check_output("ping -c 1 " + host, shell=True)   # line 9
+
+@app.route("/hash")
+def h():
+    import hashlib
+    return hashlib.md5(request.args.get("v").encode()).hexdigest()    # line 14</code></pre>
+<p>Line 9 runs a shell command containing text straight from the URL: <code>/ping?host=x;cat /etc/passwd</code> would run <code>cat</code> on your server. That is <strong>command injection</strong>.</p>
+
+<h2 id="scan">Step 1: run the scan</h2>
+<pre><code>nightowl scan demo --history off</code></pre>
+<p>(<code>--history off</code> skips git-history secret scanning to keep this example short.)</p>
+<h3>The progress lines</h3>
+<pre><code>» Detected: ecosystems [npm]; languages [python]
+» Running syft...
+» Running osv-scanner...
+» Running gitleaks...
+» Running opengrep...
+» Running lizard...
+» Running coverage...</code></pre>
+<p>Night Owl looked at the files, decided what the project is made of, and ran <em>only the engines that apply</em>. There is no cppcheck because there is no C code, and no Trivy because there is no Dockerfile or Terraform. <a href="how-it-works.html#selection">How engines are chosen</a>.</p>
+
+<h3>The summary</h3>
+<pre><code>Scanned demo in 4.2s with syft v1.55.0, osv-scanner v2.7.0, gitleaks v8.30.1, opengrep v1.33.1, lizard 1.25.0, coverage built-in
+Code quality: Average complexity 1.0 · Functions 2 · Highest complexity 1 · Overly complex functions 0 · Duplicated code 0.0%
+10 findings: 6 High, 3 Medium, 1 Low</code></pre>
+<p>The versions listed are the exact engine versions that ran, so a report is reproducible. The "Code quality" line comes from lizard and the coverage reader.</p>
+
+<h3>The findings</h3>
+<pre><code>HIGH   Vulnerability  GHSA-35jh-r3h4-6jhm  Command Injection in lodash in lodash@4.17.15  → fix: 4.17.21  (package-lock.json)  [not imported directly]
+HIGH   Code           nightowl.python.subprocess-shell  Command run through a shell with a dynamic string...  (src/app.py:9)
+HIGH   Secret         secret/aws-access-token  Hard-coded secret (aws-access-token) in tests/test_config.py  (tests/test_config.py:1)  [test]
+HIGH   Vulnerability  GHSA-p6mc-m468-83gw  Prototype Pollution in lodash in lodash@4.17.15  → fix: 4.17.19  ...
+HIGH   Code           nightowl.taint.python.injection  User input reaches a command, SQL query or eval without sanitization...  (src/app.py:9)
+HIGH   Vulnerability  GHSA-r5fr-rjxr-66jc  lodash vulnerable to Code Injection via `_.template` imports key names  → fix: 4.18.0
+MEDIUM Vulnerability  GHSA-xxjr-mmjv-4gpg  Lodash has Prototype Pollution Vulnerability in `_.unset`...  → fix: 4.17.23
+MEDIUM Code           nightowl.python.weak-hash  MD5 and SHA-1 are broken for security purposes...  (src/app.py:14)
+MEDIUM Vulnerability  GHSA-29mw-wpgm-hmr9  Regular Expression Denial of Service (ReDoS) in lodash  → fix: 4.17.21
+LOW    License        license/UNKNOWN  No license detected in lodash@4.17.15  (package-lock.json)</code></pre>
+<p>Read each column left to right: <strong>severity</strong>, <strong>category</strong>, the <strong>rule or advisory id</strong>, a <strong>plain-English title</strong>, and the <strong>location</strong>. Then the flags:</p>
+<table>
+  <tr><th>What you see</th><th>What it means</th></tr>
+  <tr><td><code>→ fix: 4.17.21</code></td><td>The smallest released version that fixes this advisory. Several lodash advisories ask for different versions, and <code>nightowl fix</code> picks the one version that satisfies all of them.</td></tr>
+  <tr><td><code>[not imported directly]</code></td><td>No source file imports lodash. The risk is lower, but it is only a hint. <a href="sbom.html#reachability">Why</a></td></tr>
+  <tr><td><code>[test]</code></td><td>The file is in a test folder. It's listed, but doesn't fail the gate by default.</td></tr>
+  <tr><td>Two <code>src/app.py:9</code> rows</td><td>Two different rules (a pattern rule and a data-flow rule) fire on the same line. That is a <a href="troubleshooting.html#limits">known duplicate</a>: the pattern rule says "shell with a dynamic string", the taint rule says "and the string came from the request".</td></tr>
+</table>
+
+<h3>The verdict</h3>
+<pre><code>Not gating: 1 in test files (still listed). Use --include-context or gate.include-contexts to gate them.
+  note: 1 of these are secrets. Fake test keys are common, but a real one committed in tests is still leaked: review them.
+Quality gate FAILED: 5 finding(s) at or above the policy threshold (high).</code></pre>
+<p>Six findings are High. Five of them count, and the sixth (the key in <code>tests/</code>) is held out. The command exits with code <code>1</code>, so CI would stop here. The note about secrets is deliberate: the tool tells you it left a secret out of the gate so you can check that it really is fake.</p>
+
+<h2 id="fix">Step 2: fix what's real</h2>
+<h3>The dependency findings</h3>
+<p>All five lodash advisories can be cleared by one upgrade. Check the plan first:</p>
+<pre><code>nightowl fix demo --dry-run
+  lodash 4.18.0 has its own advisories; trying 4.18.1
+1 upgrade(s):
+  High     npm       lodash 4.17.15 → 4.18.1  (GHSA-35jh-r3h4-6jhm, GHSA-p6mc-m468-83gw, GHSA-r5fr-rjxr-66jc, GHSA-xxjr-mmjv-4gpg, GHSA-29mw-wpgm-hmr9)</code></pre>
+<p>Notice the first line. The newest fix named by the advisories was 4.18.0, but Night Owl <strong>checked that version against OSV and found it has advisories of its own</strong>, so it moved up to 4.18.1. A naive "upgrade to the fixed version" would have swapped one vulnerability for another. When you are happy with the plan, apply it:</p>
+<pre><code>nightowl fix demo --pr      # commit to a branch and open a pull request</code></pre>
+<h3>The command injection</h3>
+<p>Never build a shell string from request data. Pass an argument list and no shell:</p>
+<pre><code>@app.route("/ping")
+def ping():
+    host = request.args.get("host", "")
+    if not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", host):
+        abort(400)
+    return subprocess.check_output(["ping", "-c", "1", host])</code></pre>
+<p>Both the pattern rule and the taint rule stop firing: there is no shell, and the value is checked before use. Rescan to confirm.</p>
+<h3>The weak hash</h3>
+<p>MD5 is fine for cache keys, but not for security. If this is a cache key, say so and accept it (next step). If it protects anything, switch to SHA-256.</p>
+
+<h2 id="triage">Step 3: record decisions you won't fix</h2>
+<p>Say the MD5 here only names a cache entry. Mark it with a reason, so the next person understands why it's still there:</p>
+<pre><code>nightowl triage &lt;id&gt; false-positive --reason "MD5 is a non-security cache key" --shared</code></pre>
+<p>Find the <code>&lt;id&gt;</code> with <code>--format json</code> (the <code>id</code> field of the finding). The command writes to <code>.nightowl/triage.json</code>, which you commit:</p>
+<pre><code>[
+  {
+    "findingId": "…",
+    "state": "false-positive",
+    "reason": "MD5 is a non-security cache key",
+    "at": "2026-11-17T…",
+    "title": "MD5 and SHA-1 are broken for security purposes…"
+  }
+]</code></pre>
+<p>Because the id comes from the rule, file and <em>normalized snippet</em> (not the line number), the decision survives edits elsewhere in the file. A false positive no longer fails the gate.</p>
+
+<h2 id="policy">Step 4: write the team's rules down</h2>
+<pre><code>cd demo
+nightowl policy init
+nightowl policy validate</code></pre>
+<pre><code>.nightowl/policy.yml: valid
+  gate: fail on high; secret: low, quality: none
+  licenses: deny (defaults), review (defaults), allow (no allow list)
+  quality: coverage ≥ -, duplication ≤ -, complexity ≤ 15</code></pre>
+<p>The starter policy says: fail on anything high or above, fail on <em>any</em> secret (even low severity), and never fail on quality findings. Commit it; from now on every developer and every CI run uses these rules.</p>
+
+<h2 id="gate">Step 5: gate pull requests on new problems only</h2>
+<pre><code>nightowl scan . --since origin/main</code></pre>
+<p>Now the build fails only for findings on lines the pull request changed, or for dependency versions it introduced. Old debt is still in the report; it just doesn't block anyone.</p>
+
+<h2 id="export">Step 6: hand the results to other tools</h2>
+<pre><code>nightowl scan . --format sarif --output results.sarif   # GitHub code scanning, IDEs
+nightowl sbom . --vex --output sbom.vex.json            # for customers and auditors
+nightowl scan . --format markdown --output summary.md   # paste into a PR</code></pre>
+
+<div class="note"><p><strong>What you learned:</strong> a scan picks engines for you, merges their results into one list, and applies a gate. You can fix real problems with <code>fix</code>, record decisions with <code>triage</code>, and encode the rules in <code>policy.yml</code>, so CI and developers always agree.</p></div>
