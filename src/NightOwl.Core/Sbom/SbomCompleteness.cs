@@ -36,11 +36,17 @@ public static class SbomCompleteness
         return missing;
     }
 
-    /// <summary>One low-severity finding per incomplete component, naming every missing field.</summary>
+    /// <summary>
+    /// One low-severity finding per incomplete component, naming every missing field.
+    /// Syft lists the same package once per manifest that declares it; those components
+    /// share a fingerprint, so duplicates are collapsed — these findings are appended
+    /// after the scan's merge step and nothing downstream would dedupe them.
+    /// </summary>
     public static IReadOnlyList<Finding> Findings(SoftwareBillOfMaterials sbom, IEnumerable<string> requiredFields)
     {
         var required = requiredFields.ToList();
         var findings = new List<Finding>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var component in sbom.Components)
         {
             var missing = MissingFields(component, required);
@@ -49,9 +55,15 @@ public static class SbomCompleteness
                 continue;
             }
 
+            var id = Fingerprint.ForSbomCompleteness(component.Package, missing);
+            if (!seen.Add(id))
+            {
+                continue;
+            }
+
             findings.Add(new Finding
             {
-                Id = Fingerprint.ForSbomCompleteness(component.Package, missing),
+                Id = id,
                 Category = FindingCategory.Quality,
                 Severity = Severity.Low,
                 RuleId = "sbom-incomplete",

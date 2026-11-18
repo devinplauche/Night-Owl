@@ -98,7 +98,10 @@ internal static class Cli
             if (gaps.Count > 0)
             {
                 Console.Error.WriteLine($"» {gaps.Count} SBOM component(s) missing required fields (sbom.required-fields)");
-                report = report with { Findings = [.. report.Findings, .. gaps] };
+                // Classify like the pipeline classifies engine findings, so a lockfile in a
+                // test folder does not gate as production code.
+                var classified = gaps.Select(g => g with { Context = PathContext.Classify(g.Location?.Path) }).ToList();
+                report = report with { Findings = [.. report.Findings, .. classified] };
             }
         }
 

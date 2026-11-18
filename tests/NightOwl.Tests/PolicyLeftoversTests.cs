@@ -105,4 +105,16 @@ public class PolicyLeftoversTests
 
     private static TriageState StateAt(TriageStore store, string project, DateTimeOffset now, TimeSpan? maxAge) =>
         store.Apply(project, [Finding()], now, maxAge)[0].Triage;
+
+    [Fact]
+    public void Sbom_completeness_collapses_the_same_package_listed_by_several_manifests()
+    {
+        var fromNpm = new SbomComponent(new PackageRef("lodash", "4.17.20", "npm"), [], ["package-lock.json"]);
+        var fromAnother = new SbomComponent(new PackageRef("lodash", "4.17.20", "npm"), [], ["app/package-lock.json"]);
+        var sbom = new SoftwareBillOfMaterials([fromNpm, fromAnother], "{}");
+
+        var findings = SbomCompleteness.Findings(sbom, ["licenses"]);
+
+        Assert.Single(findings);
+    }
 }
