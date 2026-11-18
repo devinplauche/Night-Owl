@@ -141,7 +141,7 @@ public static class EngineImages
             }
             catch (OperationCanceledException)
             {
-                process.Kill(entireProcessTree: true);
+                KillQuietly(process);
                 throw DockerTimeout(args, cancellationToken);
             }
 
@@ -174,7 +174,7 @@ public static class EngineImages
             }
             catch (OperationCanceledException)
             {
-                process.Kill(entireProcessTree: true);
+                KillQuietly(process);
                 throw DockerTimeout(args, cancellationToken);
             }
 
@@ -187,6 +187,20 @@ public static class EngineImages
     }
 
     /// <summary>The exception for a docker operation that hit the bound: the caller's own cancellation rethrows as-is.</summary>
+
+    /// <summary>Kill on the timeout path, tolerating the race where the process exited on its own first.</summary>
+    private static void KillQuietly(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException)
+        {
+            // Already exited: the timeout exception below is the real story.
+        }
+    }
+
     private static Exception DockerTimeout(string[] args, CancellationToken callerToken) =>
         callerToken.IsCancellationRequested
             ? new OperationCanceledException(callerToken)
