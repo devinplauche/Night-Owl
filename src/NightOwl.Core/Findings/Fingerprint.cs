@@ -31,7 +31,14 @@ public static partial class Fingerprint
     public static string ForCode(string ruleId, string path, string? snippet, int? line)
     {
         var normalizedPath = path.Replace('\\', '/').TrimStart('.', '/');
-        var anchor = string.IsNullOrWhiteSpace(snippet) ? $"line:{line}" : NormalizeSnippet(snippet);
+        var anchor = string.IsNullOrWhiteSpace(snippet) ? "" : NormalizeSnippet(snippet);
+        if (anchor.Length == 0)
+        {
+            // Nothing but whitespace — or, since comment stripping, nothing but a comment:
+            // fall back to the line, or every such finding in the file would share one id.
+            anchor = $"line:{line}";
+        }
+
         return Hash("code", ruleId, normalizedPath, anchor);
     }
 

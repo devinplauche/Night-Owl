@@ -47,6 +47,19 @@ public class FingerprintTests
         Assert.Equal(b, a);
     }
 
+    [Fact]
+    public void A_comment_only_snippet_falls_back_to_the_line_anchor()
+    {
+        // Stripping leaves nothing to anchor on; without the fallback every comment-only
+        // snippet in a file would collide into a single fingerprint.
+        Assert.Equal(
+            Fingerprint.ForCode("rule", "a.py", "", 5),
+            Fingerprint.ForCode("rule", "a.py", "// just a comment", 5));
+        Assert.NotEqual(
+            Fingerprint.ForCode("rule", "a.py", "// just a comment", 5),
+            Fingerprint.ForCode("rule", "a.py", "// just a comment", 6));
+    }
+
     [Theory]
     [InlineData("url = http://example.com/x", "url = http://example.com/y")]
     [InlineData("x = a#b", "x = a#c")]
