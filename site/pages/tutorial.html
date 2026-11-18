@@ -86,7 +86,7 @@ def ping():
     if not re.fullmatch(r"[A-Za-z0-9.-]{1,253}", host):
         abort(400)
     return subprocess.check_output(["ping", "-c", "1", host])</code></pre>
-<p>Both the pattern rule and the taint rule stop firing: there is no shell, and the value is checked before use. Rescan to confirm.</p>
+<p>The finding stops firing: there is no shell, and the value is checked before use. Rescan to confirm.</p>
 <h3>The weak hash</h3>
 <p>MD5 is fine for cache keys, but not for security. If this is a cache key, say so and accept it (next step). If it protects anything, switch to SHA-256.</p>
 
