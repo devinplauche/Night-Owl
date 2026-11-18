@@ -3,11 +3,13 @@ using System.Text.RegularExpressions;
 namespace NightOwl.Cli;
 
 /// <summary>
-/// Rewrites the version requirement of one direct dependency in a Cargo.toml, keeping the
-/// manifest's own pinning style (a bare "1.2" stays a caret-style requirement, "=1.2" stays
-/// exact). Only simple requirements are edited: a single version with an optional =, ~ or ^
-/// prefix. Ranges, wildcards, workspace-inherited and git/path dependencies are left to a
-/// human, reported by returning null, as are packages the manifest does not declare directly.
+/// Rewrites the version requirement of a direct dependency in a Cargo.toml — every
+/// declaration of it, across [dependencies], [dev-dependencies], [build-dependencies],
+/// workspace and target sections — keeping the manifest's own pinning style (a bare "1.2"
+/// stays a caret-style requirement, "=1.2" stays exact). Only simple requirements are
+/// edited: a single version with an optional =, ~ or ^ prefix. Ranges, wildcards,
+/// workspace-inherited and git/path dependencies are left to a human, reported by
+/// returning null, as are packages the manifest does not declare directly.
 /// </summary>
 internal static partial class CargoManifestEditor
 {
@@ -20,6 +22,7 @@ internal static partial class CargoManifestEditor
 
         var section = SectionKind.Other;
         string? tablePackage = null; // Effective package name of a [dependencies.<name>] table.
+        var changed = false;
         var i = 0;
         while (i < lines.Length)
         {
@@ -35,9 +38,12 @@ internal static partial class CargoManifestEditor
             switch (section)
             {
                 case SectionKind.Entries:
+                    // Not return-on-first-edit: the same crate can be declared in several
+                    // sections ([dependencies], [dev-dependencies], a target table), and every
+                    // declaration has to move or the lockfile update fights the stale one.
                     if (TryEditEntry(lines, i, package, targetVersion))
                     {
-                        return string.Join(newline, lines);
+                        changed = true;
                     }
 
                     break;
@@ -72,7 +78,8 @@ internal static partial class CargoManifestEditor
                                 Retarget(versionLine.Groups[2].Value, targetVersion) is { } retargeted)
                             {
                                 lines[j] = $"{versionLine.Groups[1].Value}version = \"{retargeted}\"{versionLine.Groups[3].Value}";
-                                return string.Join(newline, lines);
+                                changed = true;
+                                break;
                             }
                         }
                     }
@@ -85,7 +92,7 @@ internal static partial class CargoManifestEditor
             i++;
         }
 
-        return null;
+        return changed ? string.Join(newline, lines) : null;
     }
 
     private enum SectionKind { Other, Entries, DependencyTable }
@@ -152,13 +159,19 @@ internal static partial class CargoManifestEditor
         if (rest.StartsWith('"'))
         {
             // String form: serde = "1.0"
-            var spec = rest[1..rest.IndexOf('"', 1)];
+            var close = rest.IndexOf('"', 1);
+            if (close < 0)
+            {
+                return false; // Unterminated string: invalid TOML, leave it alone rather than throw.
+            }
+
+            var spec = rest[1..close];
             if (Retarget(spec, targetVersion) is not { } retargeted)
             {
                 return false;
             }
 
-            lines[index] = $"{entry.Groups[1].Value}\"{retargeted}\"{rest[(rest.IndexOf('"', 1) + 1)..]}";
+            lines[index] = $"{entry.Groups[1].Value}\"{retargeted}\"{rest[(close + 1)..]}";
             return true;
         }
 

@@ -107,12 +107,14 @@ public class CargoFixTests
         Assert.Null(Edit(toml));
 
     [Fact]
-    public void Only_the_first_matching_entry_changes()
+    public void Matching_entries_in_every_section_change()
     {
+        // The same crate in [dependencies] and [dev-dependencies] must both move, or the
+        // lockfile update resolves against the stale declaration.
         var toml = "[dependencies]\nserde = \"1.0.100\"\n\n[dev-dependencies]\nserde = \"1.0.100\"\n";
         var updated = Edit(toml);
         Assert.NotNull(updated);
-        Assert.Equal(1, updated.Split("1.0.220").Length - 1);
+        Assert.Equal(2, updated.Split("1.0.220").Length - 1);
     }
 
     [Fact]
@@ -120,5 +122,37 @@ public class CargoFixTests
     {
         var updated = Edit("[dependencies]\r\nserde = \"1.0.100\"\r\n");
         Assert.Equal("[dependencies]\r\nserde = \"1.0.220\"\r\n", updated);
+    }
+
+    [Fact]
+    public void Every_declaration_of_the_package_is_retargeted()
+    {
+        var toml = """
+            [dependencies]
+            serde = "1.0.100"
+
+            [dev-dependencies]
+            serde = { version = "1.0.90", features = ["derive"] }
+
+            [target.'cfg(windows)'.dependencies]
+            serde = "~1.0.80"
+            """;
+
+        var updated = Edit(toml);
+
+        Assert.NotNull(updated);
+        Assert.Contains("serde = \"1.0.220\"", updated);
+        Assert.Contains("version = \"1.0.220\"", updated);
+        Assert.Contains("serde = \"~1.0.220\"", updated);
+        Assert.DoesNotContain("1.0.100", updated);
+        Assert.DoesNotContain("1.0.90", updated);
+        Assert.DoesNotContain("1.0.80", updated);
+    }
+
+    [Fact]
+    public void Unterminated_string_requirement_is_left_alone_not_an_exception()
+    {
+        var toml = "[dependencies]\nserde = \"1.0.100";
+        Assert.Null(Edit(toml));
     }
 }

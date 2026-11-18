@@ -260,7 +260,7 @@ internal static partial class FixCommand
                 // requirement edited first, so update every manifest that declares it
                 // (workspace members included); a purely transitive dependency is fixed by
                 // the lockfile pin alone.
-                var manifests = Directory.EnumerateFiles(directory, "Cargo.toml", SearchOption.AllDirectories)
+                var manifests = Directory.EnumerateFiles(directory, "Cargo.toml", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true })
                     .Where(p => !p.Split(Path.DirectorySeparatorChar).Intersect(["target", ".git"]).Any())
                     .ToList();
                 if (manifests.Count == 0 && !File.Exists(Path.Combine(directory, "Cargo.lock")))
