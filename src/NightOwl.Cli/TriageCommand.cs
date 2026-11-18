@@ -1,6 +1,7 @@
 using System.Globalization;
 using NightOwl.Core.Findings;
 using NightOwl.Core.Gates;
+using NightOwl.Core.Policy;
 using NightOwl.Core.Reports;
 using NightOwl.Core.Triage;
 using NightOwl.Core.Updates;
@@ -44,18 +45,29 @@ internal static class TriageCommand
         }
 
         var finding = matches[0];
+        var now = DateTimeOffset.UtcNow;
+        DateTimeOffset? expires = options.Value("expires") is { } e ? DateTimeOffset.Parse(e, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal) : null;
+        string? expiryNote = null;
+        if (state == TriageState.AcceptedRisk && expires is null &&
+            PolicyFile.Load(project, out _)?.Triage.AcceptedRiskMaxAgeDays is { } maxAgeDays)
+        {
+            // Policy default: an accepted risk is not forever unless someone says so explicitly.
+            expires = now.AddDays(maxAgeDays);
+            expiryNote = $"  (expires {expires:yyyy-MM-dd} by policy: triage.accepted-risk-max-age-days = {maxAgeDays})";
+        }
+
         var path = new TriageStore(home).Save(project, new TriageDecision
         {
             FindingId = finding.Id,
             State = state,
             Reason = options.Value("reason"),
             By = Environment.UserName,
-            At = DateTimeOffset.UtcNow,
-            Expires = options.Value("expires") is { } e ? DateTimeOffset.Parse(e, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal) : null,
+            At = now,
+            Expires = expires,
             Title = finding.Title,
         }, shared: options.Has("shared"));
 
-        Console.WriteLine($"{finding.Id[..12]} {finding.Title}\n  → {state} (saved to {path})");
+        Console.WriteLine($"{finding.Id[..12]} {finding.Title}\n  → {state} (saved to {path}){expiryNote}");
         if (options.Has("shared"))
         {
             Console.WriteLine("  Commit .nightowl/triage.json so CI and teammates get the same decision.");
@@ -82,7 +94,10 @@ internal static class TriageCommand
             report = report with { Findings = kept };
         }
 
-        report = report with { Findings = new TriageStore(home).Apply(report.Project, report.Findings, DateTimeOffset.UtcNow) };
+        TimeSpan? acceptedRiskMaxAge = PolicyFile.Load(report.Project, out _)?.Triage.AcceptedRiskMaxAgeDays is { } days
+            ? TimeSpan.FromDays(days)
+            : null;
+        report = report with { Findings = new TriageStore(home).Apply(report.Project, report.Findings, DateTimeOffset.UtcNow, acceptedRiskMaxAge) };
 
         var triaged = report.Findings.Count(f => f.Triage is not (TriageState.New or TriageState.Confirmed));
         if (triaged > 0)

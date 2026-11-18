@@ -24,6 +24,11 @@ public static partial class Fingerprint
     public static string ForLicense(PackageRef package, string license) =>
         Hash("license", package.Ecosystem.ToLowerInvariant(), package.Name.ToLowerInvariant(), package.Version, license.ToUpperInvariant());
 
+    /// <summary>SBOM completeness gap: one package version missing a set of required fields.</summary>
+    public static string ForSbomCompleteness(PackageRef package, IEnumerable<string> missingFields) =>
+        Hash("sbom", package.Ecosystem.ToLowerInvariant(), package.Name.ToLowerInvariant(), package.Version,
+            string.Join(",", missingFields.Order(StringComparer.Ordinal)));
+
     /// <summary>
     /// Code-level finding (SAST, secrets, IaC). Keyed on rule, file and the normalized
     /// code snippet rather than the line number, so unrelated edits above it do not change the id.

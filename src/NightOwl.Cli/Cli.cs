@@ -5,6 +5,7 @@ using NightOwl.Core.Engines;
 using NightOwl.Core.Findings;
 using NightOwl.Core.Policy;
 using NightOwl.Core.Reports;
+using NightOwl.Core.Sbom;
 using NightOwl.Core.Updates;
 using NightOwl.Engines.Execution;
 using NightOwl.Engines.Gitleaks;
@@ -91,6 +92,16 @@ internal static class Cli
 
         var pipeline = new ScanPipeline(engines, manifest);
         var report = await pipeline.RunAsync(path, progress, cancel.Token);
+        if (policy.File?.Sbom.RequiredFields is { Count: > 0 } requiredFields && pipeline.Sbom is { } scannedSbom)
+        {
+            var gaps = SbomCompleteness.Findings(scannedSbom, requiredFields);
+            if (gaps.Count > 0)
+            {
+                Console.Error.WriteLine($"» {gaps.Count} SBOM component(s) missing required fields (sbom.required-fields)");
+                report = report with { Findings = [.. report.Findings, .. gaps] };
+            }
+        }
+
         (report, var newIds) = TriageCommand.AfterScan(report, options, store.HomeDirectory);
         if (options.Value("ai") is { } provider)
         {

@@ -1,4 +1,5 @@
 using NightOwl.Core.Findings;
+using NightOwl.Core.Sbom;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -18,6 +19,8 @@ public sealed class PolicyFile
     public GatePolicy Gate { get; set; } = new();
     public LicensesPolicy Licenses { get; set; } = new();
     public QualityPolicy Quality { get; set; } = new();
+    public TriagePolicy Triage { get; set; } = new();
+    public SbomPolicy Sbom { get; set; } = new();
 
     /// <summary>The policy in <paramref name="root"/>, or null when the project has none.</summary>
     public static PolicyFile? Load(string root, out string? path)
@@ -44,6 +47,8 @@ public sealed class PolicyFile
         file.Gate.PerCategory ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         file.Licenses ??= new LicensesPolicy();
         file.Quality ??= new QualityPolicy();
+        file.Triage ??= new TriagePolicy();
+        file.Sbom ??= new SbomPolicy();
 
         var errors = file.Validate().ToList();
         if (errors.Count > 0)
@@ -77,6 +82,16 @@ public sealed class PolicyFile
         if (Licenses.Allow is { Count: > 0 } allow && Licenses.Deny is { } deny && allow.Intersect(deny, StringComparer.OrdinalIgnoreCase).Any())
         {
             yield return $"licenses: {string.Join(", ", allow.Intersect(deny, StringComparer.OrdinalIgnoreCase))} appear in both allow and deny";
+        }
+
+        if (Triage.AcceptedRiskMaxAgeDays is < 1) { yield return "triage.accepted-risk-max-age-days must be at least 1"; }
+
+        foreach (var field in Sbom.RequiredFields ?? [])
+        {
+            if (!SbomCompleteness.KnownFields.Contains(field, StringComparer.OrdinalIgnoreCase))
+            {
+                yield return $"sbom.required-fields: '{field}' is not one of {string.Join(", ", SbomCompleteness.KnownFields)}";
+            }
         }
     }
 
@@ -137,6 +152,15 @@ public sealed class PolicyFile
           # min-coverage: 80        # percent, needs a coverage report in the project
           # max-duplication: 5      # percent
           # max-complexity: 15      # cyclomatic complexity per function
+
+        triage:
+          # Days an accepted risk stays accepted when triage gives it no explicit expiry.
+          # accepted-risk-max-age-days: 90
+
+        sbom:
+          # Fields every SBOM component must carry (name, version, ecosystem, purl, licenses, locations).
+          # A component missing one is reported as a finding.
+          # required-fields: [licenses, purl]
         """;
 }
 
@@ -166,6 +190,22 @@ public sealed class QualityPolicy
     public double? MinCoverage { get; set; }
     public double? MaxDuplication { get; set; }
     public int? MaxComplexity { get; set; }
+}
+
+public sealed class TriagePolicy
+{
+    /// <summary>
+    /// Days an accepted risk stays accepted when the decision itself carries no expiry.
+    /// `nightowl triage` stamps it as the decision's expiry; decisions recorded before the
+    /// policy existed lapse at decision time + this age. An explicit --expires always wins.
+    /// </summary>
+    public int? AcceptedRiskMaxAgeDays { get; set; }
+}
+
+public sealed class SbomPolicy
+{
+    /// <summary>Component fields every SBOM entry must carry; a component missing one is reported as a finding.</summary>
+    public List<string>? RequiredFields { get; set; }
 }
 
 public sealed class PolicyException(string message) : Exception(message);

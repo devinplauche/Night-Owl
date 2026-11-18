@@ -45,6 +45,8 @@ internal static class PolicyCommand
                     var licenses = settings.File.Licenses;
                     Console.WriteLine($"  licenses: deny {Count(licenses.Deny)}, review {Count(licenses.Review)}, allow {(licenses.Allow is null ? "(no allow list)" : licenses.Allow.Count.ToString())}");
                     Console.WriteLine($"  quality: coverage ≥ {settings.MinCoverage?.ToString() ?? "-"}, duplication ≤ {settings.MaxDuplication?.ToString() ?? "-"}, complexity ≤ {settings.MaxComplexity}");
+                    Console.WriteLine($"  triage: accepted risks expire after {(settings.File.Triage.AcceptedRiskMaxAgeDays?.ToString() ?? "-")} days by default");
+                    Console.WriteLine($"  sbom: required fields {(settings.File.Sbom.RequiredFields is { Count: > 0 } fields ? string.Join(", ", fields) : "-")}");
                     return Cli.ExitPassed;
                 }
                 catch (PolicyException e)

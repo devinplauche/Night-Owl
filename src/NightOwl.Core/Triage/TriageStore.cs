@@ -62,13 +62,28 @@ public sealed class TriageStore(string homeDirectory)
     }
 
     /// <summary>Sets each finding's triage state from active decisions. Expired decisions are ignored.</summary>
-    public IReadOnlyList<Finding> Apply(string project, IReadOnlyList<Finding> findings, DateTimeOffset now)
+    public IReadOnlyList<Finding> Apply(string project, IReadOnlyList<Finding> findings, DateTimeOffset now) =>
+        Apply(project, findings, now, acceptedRiskMaxAge: null);
+
+    /// <summary>
+    /// As <see cref="Apply(string, IReadOnlyList{Finding}, DateTimeOffset)"/>, with the policy's
+    /// default expiry for accepted risks: an accepted-risk decision with no expiry of its own
+    /// lapses <paramref name="acceptedRiskMaxAge"/> after it was recorded, so an old "we accept
+    /// this" cannot silently outlive the team's intent. A decision with an explicit expiry is
+    /// governed by that expiry alone.
+    /// </summary>
+    public IReadOnlyList<Finding> Apply(string project, IReadOnlyList<Finding> findings, DateTimeOffset now, TimeSpan? acceptedRiskMaxAge)
     {
         var decisions = Load(project);
         return findings
-            .Select(f => decisions.TryGetValue(f.Id, out var d) && d.IsActive(now) ? f with { Triage = d.State } : f)
+            .Select(f => decisions.TryGetValue(f.Id, out var d) && IsActive(d, now, acceptedRiskMaxAge) ? f with { Triage = d.State } : f)
             .ToList();
     }
+
+    private static bool IsActive(TriageDecision decision, DateTimeOffset now, TimeSpan? acceptedRiskMaxAge) =>
+        decision.IsActive(now) &&
+        !(decision.State == TriageState.AcceptedRisk && decision.Expires is null &&
+          acceptedRiskMaxAge is { } maxAge && decision.At + maxAge <= now);
 
     /// <summary>Records a decision. <see cref="TriageState.New"/> removes it.</summary>
     public string Save(string project, TriageDecision decision, bool shared)

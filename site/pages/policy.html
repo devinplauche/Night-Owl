@@ -19,7 +19,11 @@ licenses:
 quality:
   min-coverage: 80
   max-complexity: 15
-  max-duplication: 5</code></pre>
+  max-duplication: 5
+triage:
+  accepted-risk-max-age-days: 90   # accepted risks lapse after 90 days unless given an explicit expiry
+sbom:
+  required-fields: [licenses, purl]  # a component missing one is reported as a finding</code></pre>
 
 <h3>How the pieces combine</h3>
 <ul>
