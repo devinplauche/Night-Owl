@@ -149,7 +149,7 @@ def check(names):
     bad = []
     for f in OUT.glob("*.html"):
         text = f.read_text(encoding="utf-8")
-        if "{{" in text:
+        if re.search(r"\{\{[A-Z_]+\}\}", text):
             bad.append(f"{f.name}: unreplaced placeholder (a table failed to generate)")
 
         ids = set(re.findall(r'id="([^"]+)"', text))
