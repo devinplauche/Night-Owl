@@ -1,5 +1,7 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace NightOwl.Cli;
 
@@ -9,9 +11,11 @@ namespace NightOwl.Cli;
 /// are edited — a single version with an optional ^ or ~ prefix. Ranges, wildcards and
 /// branch constraints (dev-master, *) are left to a human, as are packages the manifest
 /// does not require directly: Composer has no overrides mechanism to pin a transitive
-/// dependency with.
+/// dependency with. A package required in both require and require-dev has every
+/// declaration retargeted (all-or-nothing), and the file's indentation and character
+/// escaping are preserved, so the fix stays a one-line diff.
 /// </summary>
-internal static class ComposerManifestEditor
+internal static partial class ComposerManifestEditor
 {
     public static string? SetRequirement(string composerJson, string package, string targetVersion)
     {
@@ -21,6 +25,7 @@ internal static class ComposerManifestEditor
             return null;
         }
 
+        var edits = new List<(JsonObject Requirements, string Key, string Retargeted)>();
         foreach (var section in new[] { "require", "require-dev" })
         {
             if (root[section] is not JsonObject requirements)
@@ -37,14 +42,36 @@ internal static class ComposerManifestEditor
 
             if (Retarget(constraint, targetVersion) is not { } retargeted)
             {
-                return null;
+                return null; // Declared, but in a form a human must move: no partial edits.
             }
 
-            requirements[key] = retargeted;
-            return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n";
+            edits.Add((requirements, key, retargeted));
         }
 
-        return null;
+        if (edits.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var (requirements, key, retargeted) in edits)
+        {
+            requirements[key] = retargeted;
+        }
+
+        var options = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            IndentSize = DetectIndent(composerJson),
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
+        return root.ToJsonString(options) + "\n";
+    }
+
+    /// <summary>The file's own indentation width (spaces before the first nested key), defaulting to 4 — composer's own style.</summary>
+    private static int DetectIndent(string json)
+    {
+        var match = IndentedKey().Match(json);
+        return match.Success ? match.Groups[1].Length : 4;
     }
 
     private static string? Retarget(string constraint, string targetVersion)
@@ -66,4 +93,7 @@ internal static class ComposerManifestEditor
             ? $"{trimmed[0]}{targetVersion}"
             : null;
     }
+
+    [GeneratedRegex("(?m)^(\\s+)\"")]
+    private static partial Regex IndentedKey();
 }

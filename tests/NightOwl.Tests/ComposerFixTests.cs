@@ -65,4 +65,36 @@ public class ComposerFixTests
         var manifest = "{\"require\": {\"guzzlehttp/guzzle\": \"" + constraint + "\"}}";
         Assert.Null(ComposerManifestEditor.SetRequirement(manifest, "guzzlehttp/guzzle", "7.8.1"));
     }
+
+    [Fact]
+    public void Require_and_require_dev_declarations_are_both_retargeted()
+    {
+        var json = """{"require": {"guzzlehttp/guzzle": "^7.5"}, "require-dev": {"guzzlehttp/guzzle": "~7.4"}}""";
+
+        var updated = ComposerManifestEditor.SetRequirement(json, "guzzlehttp/guzzle", "7.8.1");
+
+        Assert.NotNull(updated);
+        Assert.Contains("\"guzzlehttp/guzzle\": \"^7.8.1\"", updated);
+        Assert.Contains("\"guzzlehttp/guzzle\": \"~7.8.1\"", updated);
+    }
+
+    [Fact]
+    public void An_uneditable_second_declaration_blocks_the_edit()
+    {
+        var json = """{"require": {"guzzlehttp/guzzle": "^7.5"}, "require-dev": {"guzzlehttp/guzzle": ">=7.0 <8.0"}}""";
+        Assert.Null(ComposerManifestEditor.SetRequirement(json, "guzzlehttp/guzzle", "7.8.1"));
+    }
+
+    [Fact]
+    public void Indentation_and_text_survive_the_rewrite()
+    {
+        var json = "{\n    \"name\": \"acme/café\",\n    \"homepage\": \"https://example.com/a+b\",\n    \"require\": {\n        \"guzzlehttp/guzzle\": \"^7.5\"\n    }\n}\n";
+
+        var updated = ComposerManifestEditor.SetRequirement(json, "guzzlehttp/guzzle", "7.8.1");
+
+        Assert.NotNull(updated);
+        Assert.Contains("        \"guzzlehttp/guzzle\": \"^7.8.1\"", updated); // still 8 spaces deep, not re-indented to 2
+        Assert.Contains("acme/café", updated); // not \u-escaped
+        Assert.Contains("https://example.com/a+b", updated); // not \u-escaped
+    }
 }
