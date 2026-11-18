@@ -133,6 +133,21 @@ public sealed class TriageAndGateTests : IDisposable
     }
 
     [Fact]
+    public void Rename_parser_unquotes_git_quoted_paths()
+    {
+        const string diff = """
+            diff --git a/my old.py b/my new.py
+            similarity index 100%
+            rename from "my old.py"
+            rename to "my new.py"
+            """;
+
+        var renames = NewCodeDetector.ParseRenames(diff);
+
+        Assert.Equal("my old.py", renames["my new.py"]);
+    }
+
+    [Fact]
     public void Since_git_ref_survives_file_renames()
     {
         Git("init", "-q", "-b", "main");

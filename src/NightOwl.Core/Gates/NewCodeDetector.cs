@@ -119,17 +119,26 @@ public static partial class NewCodeDetector
         {
             if (line.StartsWith("rename from ", StringComparison.Ordinal))
             {
-                from = line["rename from ".Length..].Trim();
+                from = Unquote(line["rename from ".Length..].Trim());
             }
             else if (from is not null && line.StartsWith("rename to ", StringComparison.Ordinal))
             {
-                renames[line["rename to ".Length..].Trim()] = from;
+                renames[Unquote(line["rename to ".Length..].Trim())] = from;
                 from = null;
             }
         }
 
         return renames;
     }
+
+    /// <summary>
+    /// Git C-quotes paths containing spaces or non-ASCII bytes in diff headers
+    /// ("rename from \"my file.py\""); the quotes are not part of the path.
+    /// </summary>
+    private static string Unquote(string path) =>
+        path.Length >= 2 && path[0] == '"' && path[^1] == '"'
+            ? path[1..^1].Replace("\\\"", "\"").Replace("\\\\", "\\")
+            : path;
 
     private static string Git(string root, params string[] args) =>
         TryGit(root, args) ?? throw new InvalidOperationException($"git {string.Join(' ', args)} failed in {root}. Is the ref fetched? (CI: use fetch-depth: 0)");
