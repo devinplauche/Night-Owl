@@ -124,4 +124,83 @@ public class MavenFixTests
             """;
         Assert.Null(PomEditor.SetDependencyVersion(pom, "a:lib", "1.5"));
     }
+
+    [Fact]
+    public void Declaration_in_dependency_management_wins_over_the_plain_declaration()
+    {
+        var pom = """
+            <project>
+              <dependencies>
+                <dependency>
+                  <groupId>org.apache.commons</groupId>
+                  <artifactId>commons-lang3</artifactId>
+                </dependency>
+              </dependencies>
+              <dependencyManagement>
+                <dependencies>
+                  <dependency>
+                    <groupId>org.apache.commons</groupId>
+                    <artifactId>commons-lang3</artifactId>
+                    <version>3.12.0</version>
+                  </dependency>
+                </dependencies>
+              </dependencyManagement>
+            </project>
+            """;
+
+        var updated = PomEditor.SetDependencyVersion(pom, "org.apache.commons:commons-lang3", "3.14.0");
+
+        Assert.NotNull(updated);
+        Assert.Contains("<version>3.14.0</version>", updated);
+    }
+
+    [Fact]
+    public void When_both_declarations_carry_a_version_the_managed_one_is_edited()
+    {
+        var pom = """
+            <project>
+              <dependencies>
+                <dependency>
+                  <groupId>org.apache.commons</groupId>
+                  <artifactId>commons-lang3</artifactId>
+                  <version>3.11.0</version>
+                </dependency>
+              </dependencies>
+              <dependencyManagement>
+                <dependencies>
+                  <dependency>
+                    <groupId>org.apache.commons</groupId>
+                    <artifactId>commons-lang3</artifactId>
+                    <version>3.12.0</version>
+                  </dependency>
+                </dependencies>
+              </dependencyManagement>
+            </project>
+            """;
+
+        var updated = PomEditor.SetDependencyVersion(pom, "org.apache.commons:commons-lang3", "3.14.0");
+
+        Assert.NotNull(updated);
+        Assert.Contains("<version>3.14.0</version>", updated);
+        Assert.Contains("<version>3.11.0</version>", updated); // the plain declaration is untouched
+        Assert.DoesNotContain("<version>3.12.0</version>", updated);
+    }
+
+    [Fact]
+    public void Partial_property_version_is_left_alone()
+    {
+        var pom = """
+            <project>
+              <dependencies>
+                <dependency>
+                  <groupId>org.apache.commons</groupId>
+                  <artifactId>commons-lang3</artifactId>
+                  <version>3.12-${rev}</version>
+                </dependency>
+              </dependencies>
+            </project>
+            """;
+
+        Assert.Null(PomEditor.SetDependencyVersion(pom, "org.apache.commons:commons-lang3", "3.14.0"));
+    }
 }
